@@ -14,14 +14,14 @@
         Vertex Shader: vs
         Fragment Shader: fs
         Attributes:
-            ATTR_program_coord => 0
+            ATTR_sdf_program_coord => 0
     Bindings:
         Uniform block 'vs_uniforms':
             C struct: sdf_vs_uniforms_t
-            Bind slot: UB_vs_uniforms => 0
+            Bind slot: UB_sdf_vs_uniforms => 0
         Uniform block 'fs_uniforms':
             C struct: sdf_fs_uniforms_t
-            Bind slot: UB_fs_uniforms => 1
+            Bind slot: UB_sdf_fs_uniforms => 1
 */
 #if !defined(SOKOL_GFX_INCLUDED)
 #error "Please include sokol_gfx.h before sample-sdf.glsl.h"
@@ -34,9 +34,9 @@
 #endif
 #endif
 const sg_shader_desc* sdf_program_shader_desc(sg_backend backend);
-#define ATTR_program_coord (0)
-#define UB_vs_uniforms (0)
-#define UB_fs_uniforms (1)
+#define ATTR_sdf_program_coord (0)
+#define UB_sdf_vs_uniforms (0)
+#define UB_sdf_fs_uniforms (1)
 #pragma pack(push,1)
 SOKOL_SHDC_ALIGN(16) typedef struct sdf_vs_uniforms_t {
     sgp_vec2 iResolution;

@@ -14,17 +14,17 @@
         Vertex Shader: vs
         Fragment Shader: fs
         Attributes:
-            ATTR_program_coord => 0
-            ATTR_program_color => 1
+            ATTR_sgp_program_coord => 0
+            ATTR_sgp_program_color => 1
     Bindings:
         Image 'iTexChannel0':
             Image type: SG_IMAGETYPE_2D
             Sample type: SG_IMAGESAMPLETYPE_FLOAT
             Multisampled: false
-            Bind slot: IMG_iTexChannel0 => 0
+            Bind slot: IMG_sgp_iTexChannel0 => 0
         Sampler 'iSmpChannel0':
             Type: SG_SAMPLERTYPE_FILTERING
-            Bind slot: SMP_iSmpChannel0 => 0
+            Bind slot: SMP_sgp_iSmpChannel0 => 0
 */
 #if !defined(SOKOL_GFX_INCLUDED)
 #error "Please include sokol_gfx.h before sokol_gp.glsl.h"
@@ -37,10 +37,10 @@
 #endif
 #endif
 const sg_shader_desc* sgp_program_shader_desc(sg_backend backend);
-#define ATTR_program_coord (0)
-#define ATTR_program_color (1)
-#define IMG_iTexChannel0 (0)
-#define SMP_iSmpChannel0 (0)
+#define ATTR_sgp_program_coord (0)
+#define ATTR_sgp_program_color (1)
+#define IMG_sgp_iTexChannel0 (0)
+#define SMP_sgp_iSmpChannel0 (0)
 #if defined(SOKOL_SHDC_IMPL)
 /*
     #version 410

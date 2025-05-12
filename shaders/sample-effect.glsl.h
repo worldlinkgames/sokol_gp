@@ -14,28 +14,28 @@
         Vertex Shader: vs
         Fragment Shader: fs
         Attributes:
-            ATTR_program_coord => 0
-            ATTR_program_color => 1
+            ATTR_effect_program_coord => 0
+            ATTR_effect_program_color => 1
     Bindings:
         Uniform block 'fs_uniforms':
             C struct: effect_fs_uniforms_t
-            Bind slot: UB_fs_uniforms => 1
+            Bind slot: UB_effect_fs_uniforms => 1
         Image 'iTexChannel1':
             Image type: SG_IMAGETYPE_2D
             Sample type: SG_IMAGESAMPLETYPE_FLOAT
             Multisampled: false
-            Bind slot: IMG_iTexChannel1 => 1
+            Bind slot: IMG_effect_iTexChannel1 => 1
         Image 'iTexChannel0':
             Image type: SG_IMAGETYPE_2D
             Sample type: SG_IMAGESAMPLETYPE_FLOAT
             Multisampled: false
-            Bind slot: IMG_iTexChannel0 => 0
+            Bind slot: IMG_effect_iTexChannel0 => 0
         Sampler 'iSmpChannel1':
             Type: SG_SAMPLERTYPE_FILTERING
-            Bind slot: SMP_iSmpChannel1 => 1
+            Bind slot: SMP_effect_iSmpChannel1 => 1
         Sampler 'iSmpChannel0':
             Type: SG_SAMPLERTYPE_FILTERING
-            Bind slot: SMP_iSmpChannel0 => 0
+            Bind slot: SMP_effect_iSmpChannel0 => 0
 */
 #if !defined(SOKOL_GFX_INCLUDED)
 #error "Please include sokol_gfx.h before sample-effect.glsl.h"
@@ -48,13 +48,13 @@
 #endif
 #endif
 const sg_shader_desc* effect_program_shader_desc(sg_backend backend);
-#define ATTR_program_coord (0)
-#define ATTR_program_color (1)
-#define UB_fs_uniforms (1)
-#define IMG_iTexChannel1 (1)
-#define IMG_iTexChannel0 (0)
-#define SMP_iSmpChannel1 (1)
-#define SMP_iSmpChannel0 (0)
+#define ATTR_effect_program_coord (0)
+#define ATTR_effect_program_color (1)
+#define UB_effect_fs_uniforms (1)
+#define IMG_effect_iTexChannel1 (1)
+#define IMG_effect_iTexChannel0 (0)
+#define SMP_effect_iSmpChannel1 (1)
+#define SMP_effect_iSmpChannel0 (0)
 #pragma pack(push,1)
 SOKOL_SHDC_ALIGN(16) typedef struct effect_fs_uniforms_t {
     sgp_vec2 iVelocity;

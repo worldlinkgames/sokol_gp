@@ -1646,8 +1646,8 @@ static sg_shader _sgp_make_common_shader(void) {
     desc.samplers[0].sampler_type = SG_SAMPLERTYPE_FILTERING;
     desc.image_sampler_pairs[0].stage = SG_SHADERSTAGE_FRAGMENT;
     desc.image_sampler_pairs[0].image_slot = 0;
-    desc.image_sampler_pairs[0].sampler_slot = 0;
-
+    desc.image_sampler_pairs[0].sampler_slot = 0;  // Use sampler slot 0 to match the shader
+    
     // GLCORE / GLES3 only
     desc.attrs[SGP_VS_ATTR_COORD].glsl_name = "coord";
     desc.attrs[SGP_VS_ATTR_COLOR].glsl_name = "color";
@@ -1712,6 +1712,18 @@ static sg_shader _sgp_make_common_shader(void) {
             shd.id = SG_INVALID_ID;
             return shd;
         }
+    }
+
+    // WebGPU specific setup for binding points
+    if (backend == SG_BACKEND_WGPU) {
+        // For WebGPU, we need specific binding slots for each resource type
+        // Use the binding slots that match what's in the compiled shader
+        desc.images[0].wgsl_group1_binding_n = 64;        // Use group 1, binding 64 for textures
+        desc.samplers[0].wgsl_group1_binding_n = 80;      // Use group 1, binding 80 for samplers
+        
+        // Ensure image_sampler_pairs is consistent with our sampler/image slots
+        desc.image_sampler_pairs[0].image_slot = 0;
+        desc.image_sampler_pairs[0].sampler_slot = 0;
     }
 
     return sg_make_shader(&desc);
@@ -2003,8 +2015,10 @@ void sgp_flush(void) {
     uint32_t cur_pip_id = _SGP_IMPOSSIBLE_ID;
     uint32_t cur_uniform_index = _SGP_IMPOSSIBLE_ID;
     uint32_t cur_imgs_id[SGP_TEXTURE_SLOTS];
+    uint32_t cur_smp_id[SGP_TEXTURE_SLOTS];
     for (int i=0;i<SGP_TEXTURE_SLOTS;++i) {
         cur_imgs_id[i] = _SGP_IMPOSSIBLE_ID;
+        cur_smp_id[i] = _SGP_IMPOSSIBLE_ID;
     }
 
     // define the resource bindings
@@ -2039,7 +2053,6 @@ void sgp_flush(void) {
                     // when pipeline changes we need to re-apply uniforms and bindings
                     cur_uniform_index = _SGP_IMPOSSIBLE_ID;
                     apply_bindings = true;
-                    cur_pip_id = args->pip.id;
                     sg_apply_pipeline(args->pip);
                 }
                 // bindings
@@ -2052,15 +2065,43 @@ void sgp_flush(void) {
                             smp_id = args->textures.samplers[j].id;
                         }
                     }
-                    if (cur_imgs_id[j] != img_id) {
-                        // when an image binding change we need to re-apply bindings
+                    if (cur_imgs_id[j] != img_id || cur_smp_id[j] != smp_id) {
+                        // when an image or sampler binding changes we need to re-apply bindings
                         cur_imgs_id[j] = img_id;
+                        cur_smp_id[j] = smp_id;
                         bind.images[j].id = img_id;
                         bind.samplers[j].id = smp_id;
                         apply_bindings = true;
                     }
                 }
+                
+                // For WebGPU, explicitly set special binding slots to match the shader binding points
                 if (apply_bindings) {
+                    sg_backend backend = sg_query_backend();
+                    
+                    // WebGPU specific handling
+                    if (backend == SG_BACKEND_WGPU) {
+                        // Adding debug marker to help trace the binding state
+                        sg_push_debug_group("SGP WebGPU binding");
+                        
+                        // Make sure sampler is bound when texture is bound
+                        for (uint32_t j=0; j < SGP_TEXTURE_SLOTS; ++j) {
+                            if (bind.images[j].id != SG_INVALID_ID) {
+                                // If texture is bound but sampler is not, use nearest sampler
+                                if (bind.samplers[j].id == SG_INVALID_ID) {
+                                    bind.samplers[j] = _sgp.nearest_smp;
+                                }
+                                
+                                // For debugging - if this is triggered, we have texture but the sampler is not set correctly
+                                if (j == 0) {
+                                    sg_push_debug_group("Binding texture/sampler");
+                                    sg_pop_debug_group();
+                                }
+                            }
+                        }
+                        sg_pop_debug_group();
+                    }
+                    
                     sg_apply_bindings(&bind);
                     apply_uniforms = true;
                 }
@@ -2916,9 +2957,8 @@ void sgp_draw_filled_rect(float x, float y, float w, float h) {
 }
 
 static sgp_isize _sgp_query_image_size(sg_image img_id) {
-    const _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
-    SOKOL_ASSERT(img);
-    sgp_isize size = {img ? img->cmn.width : 0, img ? img->cmn.height : 0};
+    sg_image_desc desc = sg_query_image_desc(img_id);
+    sgp_isize size = {desc.width, desc.height};
     return size;
 }
 
