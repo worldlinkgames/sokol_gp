@@ -10,7 +10,8 @@ SHDCFLAGS=--format sokol_impl --slang glsl410:glsl300es:hlsl4:metal_macos:metal_
 SHADERS=\
 	shaders/sample-effect.glsl.h \
 	shaders/sample-sdf.glsl.h \
-	shaders/sokol_gp.glsl.h
+	shaders/sokol_gp.glsl.h \
+	shaders/zdepth.glsl.h
 
 # platform
 ifndef platform
@@ -89,7 +90,8 @@ SAMPLES=\
 	build/sample-framebuffer$(OUTEXT) \
 	build/sample-bench$(OUTEXT) \
 	build/sample-sdf$(OUTEXT) \
-	build/sample-effect$(OUTEXT)
+	build/sample-effect$(OUTEXT) \
+	build/sample-zdepth$(OUTEXT)
 
 all: $(SAMPLES)
 
@@ -129,3 +131,4 @@ test: all
 	./build/sample-framebuffer$(OUTEXT)
 	./build/sample-sdf$(OUTEXT)
 	./build/sample-bench$(OUTEXT)
+	./build/sample-zdepth$(OUTEXT)
