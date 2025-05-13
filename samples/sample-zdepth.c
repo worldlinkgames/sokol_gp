@@ -47,12 +47,30 @@ static bool animate_depth = true;
 
 // Function to draw a rectangle with z-depth
 static void draw_rect_with_zdepth(float x, float y, float width, float height, sgp_color color, float z, sg_image img) {
+    // Debug the Z value - values should range from 0 to 1
+    // Z=0 is front (near), Z=1 is back (far)
+    static float last_z_print = 0.0f;
+    static float last_z_print_time = 0.0f;
+    float current_time = stm_sec(stm_diff(stm_now(), start_time));
+    
+    // Only print occasionally to avoid spam
+    if (current_time - last_z_print_time > 2.0f) {
+        printf("Drawing rect with position (%.1f,%.1f) and Z: %.2f\n", x, y, z);
+        last_z_print_time = current_time;
+        last_z_print = z;
+    }
+
     // Set the Z value in uniform data with proper padding/alignment
     zdepth_uniform_t uniforms = {0};
     uniforms.z_value = z;
     
     // Set the custom pipeline and image
     sgp_set_pipeline(pip_zdepth);
+    
+    // Set the blend mode for proper alpha handling
+    sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
+    
+    // Set the uniform with Z value
     sgp_set_uniform(&uniforms, sizeof(uniforms), NULL, 0);
     sgp_set_image(0, img);
     sgp_set_sampler(0, linear_sampler);
@@ -65,6 +83,7 @@ static void draw_rect_with_zdepth(float x, float y, float width, float height, s
     sgp_reset_image(0);
     sgp_reset_sampler(0);
     sgp_reset_uniform();
+    sgp_reset_blend_mode();
     sgp_reset_pipeline();
 }
 
@@ -84,44 +103,104 @@ static void frame(void) {
     
     // Calculate animated Z values (oscillate between 0 and 1)
     float time_sec = stm_sec(stm_diff(stm_now(), start_time));
-    float z_front = animate_depth ? fabsf(sinf(time_sec * 0.5f)) : 0.2f; 
-    float z_middle = animate_depth ? fabsf(sinf(time_sec * 0.5f + 2.094f)) : 0.5f; // 2PI/3 offset
-    float z_back = animate_depth ? fabsf(sinf(time_sec * 0.5f + 4.188f)) : 0.8f;   // 4PI/3 offset
     
-    // Back rectangle (blue)
-    draw_rect_with_zdepth(
-        center_x - 100.0f, 
-        center_y - 100.0f, 
-        box_size, 
-        box_size, 
-        (sgp_color){0.0f, 0.0f, 0.8f, 0.8f}, 
-        z_back,
-        image_back
-    );
+    // Debug message for animation state - less frequent to avoid console spam
+    static float last_print_time = 0.0f;
+    if (time_sec - last_print_time > 5.0f) {
+        printf("Animation state: %s (time: %.2f)\n", animate_depth ? "ON" : "OFF", time_sec);
+        last_print_time = time_sec;
+    }
     
-    // Middle rectangle (green)
-    draw_rect_with_zdepth(
-        center_x, 
-        center_y, 
-        box_size, 
-        box_size, 
-        (sgp_color){0.0f, 0.8f, 0.0f, 0.8f}, 
-        z_middle,
-        image_middle
-    );
+    // More distinct Z values - wider range for better visualization
+    float z_front, z_middle, z_back;
     
-    // Front rectangle (red)
-    draw_rect_with_zdepth(
-        center_x + 100.0f, 
-        center_y + 100.0f, 
-        box_size, 
-        box_size, 
-        (sgp_color){0.8f, 0.0f, 0.0f, 0.8f}, 
-        z_front,
-        image_front
-    );
+    if (animate_depth) {
+        // Use more pronounced animation with faster and wider oscillation
+        // Note: The shader uses 1.0 - z_value, so higher values move objects backward
+        z_front = 0.1f + 0.8f * fabsf(sinf(time_sec));
+        z_middle = 0.1f + 0.8f * fabsf(sinf(time_sec + 2.094f)); // 2PI/3 offset
+        z_back = 0.1f + 0.8f * fabsf(sinf(time_sec + 4.188f));   // 4PI/3 offset
+    } else {
+        // Fixed Z values
+        z_front = 0.1f;  // Closer to screen
+        z_middle = 0.5f; // Middle depth
+        z_back = 0.9f;   // Farther from screen
+    }
     
-    // Draw instructions
+    // Print Z values periodically for debugging
+    printf("Z values: blue=%.2f (pos=back), green=%.2f (pos=middle), red=%.2f (pos=front)\n", 
+           z_back, z_middle, z_front);
+    
+    // Define the rectangles we want to draw
+    typedef struct {
+        float x, y;
+        float z;
+        sgp_color color;
+        sg_image image;
+        const char* name;
+    } rect_with_depth;
+    
+    rect_with_depth rects[] = {
+        // Back rectangle (blue)
+        {
+            .x = center_x - 100.0f,
+            .y = center_y - 100.0f,
+            .z = z_back,
+            .color = {0.0f, 0.0f, 0.8f, 0.8f},
+            .image = image_back,
+            .name = "blue"
+        },
+        // Middle rectangle (green)
+        {
+            .x = center_x,
+            .y = center_y,
+            .z = z_middle,
+            .color = {0.0f, 0.8f, 0.0f, 0.8f},
+            .image = image_middle,
+            .name = "green"
+        },
+        // Front rectangle (red)
+        {
+            .x = center_x + 100.0f,
+            .y = center_y + 100.0f,
+            .z = z_front,
+            .color = {0.8f, 0.0f, 0.0f, 0.8f},
+            .image = image_front,
+            .name = "red"
+        }
+    };
+    
+    // Sort the rectangles by Z value (back to front - painter's algorithm)
+    // Simple bubble sort since we only have 3 elements
+    int n = sizeof(rects) / sizeof(rects[0]);
+    for (int i = 0; i < n-1; i++) {
+        for (int j = 0; j < n-i-1; j++) {
+            if (rects[j].z < rects[j+1].z) {
+                // Swap
+                rect_with_depth temp = rects[j];
+                rects[j] = rects[j+1];
+                rects[j+1] = temp;
+            }
+        }
+    }
+    
+    // Draw rectangles in sorted order (back to front)
+    printf("Drawing order: ");
+    for (int i = 0; i < n; i++) {
+        draw_rect_with_zdepth(
+            rects[i].x, 
+            rects[i].y, 
+            box_size, 
+            box_size, 
+            rects[i].color, 
+            rects[i].z,
+            rects[i].image
+        );
+        printf("%s (z=%.2f) ", rects[i].name, rects[i].z);
+    }
+    printf("\n");
+    
+    // Overlay explanatory text
     sgp_reset_pipeline();
     sgp_set_color(1.0f, 1.0f, 1.0f, 1.0f);
     char info_text[128];
@@ -147,9 +226,13 @@ static void frame(void) {
 }
 
 static void event(const sapp_event* ev) {
+    // Log all key events to see if they're coming through
     if (ev->type == SAPP_EVENTTYPE_KEY_DOWN) {
+        printf("Key pressed: %d\n", ev->key_code);
+        
         if (ev->key_code == SAPP_KEYCODE_SPACE) {
             animate_depth = !animate_depth;
+            printf("Animation toggled: %s\n", animate_depth ? "ON" : "OFF");
         }
     }
 }
@@ -191,6 +274,17 @@ static void init(void) {
 
     // Initialize Sokol GP
     sgp_desc sgpdesc = {0};
+    sgpdesc.max_vertices = 65536;       // Increased from default for complex rendering
+    sgpdesc.max_commands = 16384;       // Increased from default
+    
+    // Use the actual color and depth formats of the framebuffer
+    sgpdesc.color_format = sapp_color_format();  // Get format from sokol_app
+    sgpdesc.depth_format = sapp_depth_format();  // Get format from sokol_app
+    sgpdesc.sample_count = sapp_sample_count();  // Get sample count from sokol_app
+    
+    printf("Using color format: %d, depth format: %d, sample count: %d\n", 
+           sgpdesc.color_format, sgpdesc.depth_format, sgpdesc.sample_count);
+    
     sgp_setup(&sgpdesc);
     if (!sgp_is_valid()) {
         fprintf(stderr, "Failed to create Sokol GP context: %s\n", sgp_get_error_message(sgp_get_last_error()));
@@ -248,6 +342,14 @@ static void init(void) {
     sgp_pipeline_desc pip_desc = {0};
     pip_desc.shader = shd_zdepth;
     pip_desc.has_vs_color = true;
+    pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    pip_desc.blend_mode = SGP_BLENDMODE_BLEND_PREMULTIPLIED;  // Better alpha handling
+    
+    // Use the same formats as the sgp context
+    pip_desc.color_format = sgpdesc.color_format;
+    pip_desc.depth_format = sgpdesc.depth_format;
+    pip_desc.sample_count = sgpdesc.sample_count;
+    
     pip_zdepth = sgp_make_pipeline(&pip_desc);
     if (sg_query_pipeline_state(pip_zdepth) != SG_RESOURCESTATE_VALID) {
         fprintf(stderr, "Failed to create Z-depth pipeline!\n");
@@ -279,5 +381,6 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         .width = 800,
         .height = 600,
         .sample_count = 4
+        // Note: depth_buffer field is not available in this sokol_app version
     };
 } 
