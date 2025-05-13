@@ -32,7 +32,7 @@ else ifeq ($(platform), macos)
         LIBS+=-framework Cocoa -framework QuartzCore -framework Metal -framework MetalKit
         CFLAGS+=-ObjC -x objective-c
 else ifeq ($(platform), web)
-	LIBS+=-sFULL_ES3
+	LIBS+=-sFULL_ES3 -sUSE_WEBGPU=1
 	CC=emcc
 	OUTEXT=.html
 	CFLAGS+=--shell-file=samples/sample-shell.html --embed-file images
@@ -79,6 +79,8 @@ else ifeq ($(backend), d3d11)
 	DEFS+=-DSOKOL_D3D11
 else ifeq ($(backend), metal)
 	DEFS+=-DSOKOL_METAL
+else ifeq ($(backend), wgpu)
+	DEFS+=-DSOKOL_WGPU
 else ifeq ($(backend), dummy)
 	DEFS+=-DSOKOL_DUMMY_BACKEND
 endif
