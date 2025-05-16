@@ -3,6 +3,13 @@ This sample demonstrates how to use Z-depth ordering with sokol_gp.
 Objects with higher Z values appear behind those with lower Z values.
 */
 
+#define NUM_BLEND_MODES 3
+enum {
+    BLENDMODE_NONE = 0,
+    BLENDMODE_ALPHA = 1,
+    BLENDMODE_PREMULTIPLIED = 2
+};
+
 #define SGP_UNIFORM_CONTENT_SLOTS 16
 #define SOKOL_IMPL
 #include "sokol_gfx.h"
@@ -45,10 +52,10 @@ static sg_image image_back;
 static uint64_t start_time;
 static bool animate_depth = true;
 
-static sg_pipeline custom_depth_pipeline;
+static sg_pipeline custom_depth_pipelines[NUM_BLEND_MODES];
 
 // Function to draw a rectangle with z-depth
-static void draw_rect_with_zdepth(float x, float y, float width, float height, sgp_color color, float z, sg_image img) {
+static void draw_rect_with_zdepth(float x, float y, float width, float height, sgp_color color, float z, sg_image img, int blend_mode) {
     // Debug the Z value - values should range from 0 to 1
     // Z=0 is front (near), Z=1 is back (far)
     static float last_z_print = 0.0f;
@@ -66,12 +73,8 @@ static void draw_rect_with_zdepth(float x, float y, float width, float height, s
     zdepth_uniform_t uniforms = {0};
     uniforms.z_value = z;
     
-    // Set the custom pipeline and image
-    // sgp_set_pipeline(pip_zdepth);
-    sgp_set_pipeline(custom_depth_pipeline);
-    
-    // Set the blend mode for proper alpha handling
-    sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
+    // Set the custom pipeline directly - do NOT use sgp_set_blend_mode()
+    sgp_set_pipeline(custom_depth_pipelines[blend_mode]);
     
     // Set the uniform with Z value
     sgp_set_uniform(&uniforms, sizeof(uniforms), NULL, 0);
@@ -86,7 +89,6 @@ static void draw_rect_with_zdepth(float x, float y, float width, float height, s
     sgp_reset_image(0);
     sgp_reset_sampler(0);
     sgp_reset_uniform();
-    sgp_reset_blend_mode();
     sgp_reset_pipeline();
 }
 
@@ -141,6 +143,7 @@ static void frame(void) {
         sgp_color color;
         sg_image image;
         const char* name;
+        int blend_mode;
     } rect_with_depth;
     
     rect_with_depth rects[] = {
@@ -151,7 +154,8 @@ static void frame(void) {
             .z = z_back,
             .color = {0.0f, 0.0f, 0.8f, 0.8f},
             .image = image_back,
-            .name = "blue"
+            .name = "blue",
+            .blend_mode = BLENDMODE_ALPHA
         },
         // Middle rectangle (green)
         {
@@ -160,7 +164,8 @@ static void frame(void) {
             .z = z_middle,
             .color = {0.0f, 0.8f, 0.0f, 0.8f},
             .image = image_middle,
-            .name = "green"
+            .name = "green",
+            .blend_mode = BLENDMODE_ALPHA
         },
         // Front rectangle (red)
         {
@@ -169,13 +174,15 @@ static void frame(void) {
             .z = z_front,
             .color = {0.8f, 0.0f, 0.0f, 0.8f},
             .image = image_front,
-            .name = "red"
+            .name = "red",
+            .blend_mode = BLENDMODE_ALPHA
         }
     };
     
     // Sort the rectangles by Z value (back to front - painter's algorithm)
     // Simple bubble sort since we only have 3 elements
     int n = sizeof(rects) / sizeof(rects[0]);
+    // Commented out to test pure depth testing
     // for (int i = 0; i < n-1; i++) {
     //     for (int j = 0; j < n-i-1; j++) {
     //         if (rects[j].z < rects[j+1].z) {
@@ -197,7 +204,8 @@ static void frame(void) {
             box_size, 
             rects[i].color, 
             rects[i].z,
-            rects[i].image
+            rects[i].image,
+            rects[i].blend_mode
         );
         printf("%s (z=%.2f) ", rects[i].name, rects[i].z);
     }
@@ -341,35 +349,49 @@ static void init(void) {
         exit(-1);
     }
 
-    // Create pipeline with Z-depth support
-    sgp_pipeline_desc sgp_pip_desc = {0};
-    sgp_pip_desc.shader = shd_zdepth;
-    sgp_pip_desc.has_vs_color = true;
-    sgp_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
-    sgp_pip_desc.blend_mode = SGP_BLENDMODE_BLEND_PREMULTIPLIED;
-    sgp_pip_desc.color_format = sgpdesc.color_format;
-    sgp_pip_desc.depth_format = sgpdesc.depth_format;
-    sgp_pip_desc.sample_count = sgpdesc.sample_count;
+    // Create a direct sokol_gfx pipeline with depth testing for each blend mode
+    for (int i = 0; i < NUM_BLEND_MODES; ++i) {
+        sg_pipeline_desc pip_desc = {0};
+        pip_desc.shader = shd_zdepth;
+        pip_desc.layout.buffers[0].stride = sizeof(sgp_vertex);
+        pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT4;
+        pip_desc.layout.attrs[0].offset = offsetof(sgp_vertex, position);
+        pip_desc.layout.attrs[1].format = SG_VERTEXFORMAT_UBYTE4N;
+        pip_desc.layout.attrs[1].offset = offsetof(sgp_vertex, color);
+        pip_desc.depth.pixel_format = sgpdesc.depth_format;
+        pip_desc.depth.write_enabled = true;
+        pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        pip_desc.colors[0].pixel_format = sgpdesc.color_format;
+        pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+        pip_desc.sample_count = sgpdesc.sample_count;
 
-    // Create the sokol_gp pipeline
-    pip_zdepth = sgp_make_pipeline(&sgp_pip_desc);
+        // Set blend mode for this pipeline
+        switch (i) {
+            case BLENDMODE_NONE: // No blending
+                pip_desc.colors[0].blend.enabled = false;
+                break;
+            case BLENDMODE_ALPHA: // Regular alpha blending
+                pip_desc.colors[0].blend.enabled = true;
+                pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+                pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+                pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
+                pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+                pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
+                break;
+            case BLENDMODE_PREMULTIPLIED: // Premultiplied alpha blending
+                pip_desc.colors[0].blend.enabled = true;
+                pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+                pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
+                pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+                pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
+                break;
+        }
 
-    // Now create a direct sokol_gfx pipeline with depth testing
-    sg_pipeline_desc sg_pip_desc = {0};
-    sg_pip_desc.shader = shd_zdepth;
-    sg_pip_desc.layout.buffers[0].stride = sizeof(sgp_vertex);
-    sg_pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT4;
-    sg_pip_desc.layout.attrs[0].offset = offsetof(sgp_vertex, position);
-    sg_pip_desc.layout.attrs[1].format = SG_VERTEXFORMAT_UBYTE4N;
-    sg_pip_desc.layout.attrs[1].offset = offsetof(sgp_vertex, color);
-    sg_pip_desc.depth.pixel_format = sgpdesc.depth_format;
-    sg_pip_desc.depth.write_enabled = true;
-    sg_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-    sg_pip_desc.colors[0].pixel_format = sgpdesc.color_format;
-    sg_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
-
-    // Create a direct pipeline with sokol_gfx
-    custom_depth_pipeline = sg_make_pipeline(&sg_pip_desc);
+        custom_depth_pipelines[i] = sg_make_pipeline(&pip_desc);
+    }
 }
 
 static void cleanup(void) {
@@ -377,7 +399,9 @@ static void cleanup(void) {
     sg_destroy_image(image_middle);
     sg_destroy_image(image_back);
     sg_destroy_sampler(linear_sampler);
-    sg_destroy_pipeline(pip_zdepth);
+    for (int i = 0; i < NUM_BLEND_MODES; ++i) {
+        sg_destroy_pipeline(custom_depth_pipelines[i]);
+    }
     sg_destroy_shader(shd_zdepth);
     sgp_shutdown();
     sg_shutdown();
