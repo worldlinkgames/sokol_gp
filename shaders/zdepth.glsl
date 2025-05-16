@@ -28,7 +28,16 @@ layout(location=1) in vec4 iColor;
 layout(location=0) out vec4 fragColor;
 
 void main() {
-    fragColor = texture(sampler2D(iTexChannel0, iSmpChannel0), texUV) * iColor;
+    vec4 texColor = texture(sampler2D(iTexChannel0, iSmpChannel0), texUV) * iColor;
+    // Only write depth if alpha is above threshold (alpha masking)
+    // 1e-6 is scientific notation for the number 0.000001 (one millionth).
+    // In GLSL and most programming languages, 1e-6 is a concise way to write a very small floating-point value.
+    // Here we want the reasonably smallest floating point value 
+    // we can get for hard transparency, like sprites with fully transparent backgrounds.
+    // For variable transparency like lightmaps, we
+    // would just disable depth testing entirely
+    if (texColor.a < 1e-6) discard;
+    fragColor = texColor;
 }
 @end
 
