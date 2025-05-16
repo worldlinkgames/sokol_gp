@@ -45,6 +45,8 @@ static sg_image image_back;
 static uint64_t start_time;
 static bool animate_depth = true;
 
+static sg_pipeline custom_depth_pipeline;
+
 // Function to draw a rectangle with z-depth
 static void draw_rect_with_zdepth(float x, float y, float width, float height, sgp_color color, float z, sg_image img) {
     // Debug the Z value - values should range from 0 to 1
@@ -65,7 +67,8 @@ static void draw_rect_with_zdepth(float x, float y, float width, float height, s
     uniforms.z_value = z;
     
     // Set the custom pipeline and image
-    sgp_set_pipeline(pip_zdepth);
+    // sgp_set_pipeline(pip_zdepth);
+    sgp_set_pipeline(custom_depth_pipeline);
     
     // Set the blend mode for proper alpha handling
     sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
@@ -122,9 +125,9 @@ static void frame(void) {
         z_back = 0.1f + 0.8f * fabsf(sinf(time_sec + 4.188f));   // 4PI/3 offset
     } else {
         // Fixed Z values
-        z_front = 0.1f;  // Closer to screen
+        z_front = 0.9f;  // Closer to screen (higher z = further in OpenGL)
         z_middle = 0.5f; // Middle depth
-        z_back = 0.9f;   // Farther from screen
+        z_back = 0.1f;   // Farther from screen (lower z = closer in OpenGL)
     }
     
     // Print Z values periodically for debugging
@@ -173,16 +176,16 @@ static void frame(void) {
     // Sort the rectangles by Z value (back to front - painter's algorithm)
     // Simple bubble sort since we only have 3 elements
     int n = sizeof(rects) / sizeof(rects[0]);
-    for (int i = 0; i < n-1; i++) {
-        for (int j = 0; j < n-i-1; j++) {
-            if (rects[j].z < rects[j+1].z) {
-                // Swap
-                rect_with_depth temp = rects[j];
-                rects[j] = rects[j+1];
-                rects[j+1] = temp;
-            }
-        }
-    }
+    // for (int i = 0; i < n-1; i++) {
+    //     for (int j = 0; j < n-i-1; j++) {
+    //         if (rects[j].z < rects[j+1].z) {
+    //             // Swap
+    //             rect_with_depth temp = rects[j];
+    //             rects[j] = rects[j+1];
+    //             rects[j+1] = temp;
+    //         }
+    //     }
+    // }
     
     // Draw rectangles in sorted order (back to front)
     printf("Drawing order: ");
@@ -339,22 +342,34 @@ static void init(void) {
     }
 
     // Create pipeline with Z-depth support
-    sgp_pipeline_desc pip_desc = {0};
-    pip_desc.shader = shd_zdepth;
-    pip_desc.has_vs_color = true;
-    pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
-    pip_desc.blend_mode = SGP_BLENDMODE_BLEND_PREMULTIPLIED;  // Better alpha handling
-    
-    // Use the same formats as the sgp context
-    pip_desc.color_format = sgpdesc.color_format;
-    pip_desc.depth_format = sgpdesc.depth_format;
-    pip_desc.sample_count = sgpdesc.sample_count;
-    
-    pip_zdepth = sgp_make_pipeline(&pip_desc);
-    if (sg_query_pipeline_state(pip_zdepth) != SG_RESOURCESTATE_VALID) {
-        fprintf(stderr, "Failed to create Z-depth pipeline!\n");
-        exit(-1);
-    }
+    sgp_pipeline_desc sgp_pip_desc = {0};
+    sgp_pip_desc.shader = shd_zdepth;
+    sgp_pip_desc.has_vs_color = true;
+    sgp_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    sgp_pip_desc.blend_mode = SGP_BLENDMODE_BLEND_PREMULTIPLIED;
+    sgp_pip_desc.color_format = sgpdesc.color_format;
+    sgp_pip_desc.depth_format = sgpdesc.depth_format;
+    sgp_pip_desc.sample_count = sgpdesc.sample_count;
+
+    // Create the sokol_gp pipeline
+    pip_zdepth = sgp_make_pipeline(&sgp_pip_desc);
+
+    // Now create a direct sokol_gfx pipeline with depth testing
+    sg_pipeline_desc sg_pip_desc = {0};
+    sg_pip_desc.shader = shd_zdepth;
+    sg_pip_desc.layout.buffers[0].stride = sizeof(sgp_vertex);
+    sg_pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT4;
+    sg_pip_desc.layout.attrs[0].offset = offsetof(sgp_vertex, position);
+    sg_pip_desc.layout.attrs[1].format = SG_VERTEXFORMAT_UBYTE4N;
+    sg_pip_desc.layout.attrs[1].offset = offsetof(sgp_vertex, color);
+    sg_pip_desc.depth.pixel_format = sgpdesc.depth_format;
+    sg_pip_desc.depth.write_enabled = true;
+    sg_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    sg_pip_desc.colors[0].pixel_format = sgpdesc.color_format;
+    sg_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+
+    // Create a direct pipeline with sokol_gfx
+    custom_depth_pipeline = sg_make_pipeline(&sg_pip_desc);
 }
 
 static void cleanup(void) {

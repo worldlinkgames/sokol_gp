@@ -13,7 +13,7 @@ layout(location=1) out vec4 iColor;
 
 void main() {
     // Use Z-value for depth ordering (mapped to [-1,1] range for GL depth buffer)
-    gl_Position = vec4(coord.xy, 1.0 - z_value, 1.0);
+    gl_Position = vec4(coord.xy, z_value, 1.0);
     gl_PointSize = 1.0;
     texUV = coord.zw;
     iColor = color;
