@@ -3,11 +3,15 @@ This sample demonstrates how to use Z-depth ordering with sokol_gp.
 Objects with higher Z values appear behind those with lower Z values.
 */
 
-#define NUM_BLEND_MODES 3
+#define NUM_BLEND_MODES 7
 enum {
-    BLENDMODE_NONE = 0,
-    BLENDMODE_ALPHA = 1,
-    BLENDMODE_PREMULTIPLIED = 2
+    BLENDMODE_NONE = 0,                 // No blending
+    BLENDMODE_BLEND = 1,                // Alpha blending
+    BLENDMODE_BLEND_PREMULTIPLIED = 2,  // Pre-multiplied alpha blending
+    BLENDMODE_ADD = 3,                  // Additive blending
+    BLENDMODE_ADD_PREMULTIPLIED = 4,    // Pre-multiplied additive blending
+    BLENDMODE_MOD = 5,                  // Color modulate
+    BLENDMODE_MUL = 6                   // Color multiply
 };
 
 #define SGP_UNIFORM_CONTENT_SLOTS 16
@@ -51,14 +55,28 @@ static sg_image image_back;
 // For animation
 static uint64_t start_time;
 static bool animate_depth = true;
+static int current_blend_mode = BLENDMODE_BLEND;  // Default blend mode
 
 static sg_pipeline custom_depth_pipelines[NUM_BLEND_MODES];
+
+// Function to get the name of the current blend mode
+static const char* get_blend_mode_name(int blend_mode) {
+    switch (blend_mode) {
+        case BLENDMODE_NONE: return "NONE";
+        case BLENDMODE_BLEND: return "BLEND";
+        case BLENDMODE_BLEND_PREMULTIPLIED: return "BLEND_PREMULTIPLIED";
+        case BLENDMODE_ADD: return "ADD";
+        case BLENDMODE_ADD_PREMULTIPLIED: return "ADD_PREMULTIPLIED";
+        case BLENDMODE_MOD: return "MOD";
+        case BLENDMODE_MUL: return "MUL";
+        default: return "UNKNOWN";
+    }
+}
 
 // Function to draw a rectangle with z-depth
 static void draw_rect_with_zdepth(float x, float y, float width, float height, sgp_color color, float z, sg_image img, int blend_mode) {
     // Debug the Z value - values should range from 0 to 1
     // Z=0 is front (near), Z=1 is back (far)
-    static float last_z_print = 0.0f;
     static float last_z_print_time = 0.0f;
     float current_time = stm_sec(stm_diff(stm_now(), start_time));
     
@@ -66,7 +84,6 @@ static void draw_rect_with_zdepth(float x, float y, float width, float height, s
     if (current_time - last_z_print_time > 2.0f) {
         printf("Drawing rect with position (%.1f,%.1f) and Z: %.2f\n", x, y, z);
         last_z_print_time = current_time;
-        last_z_print = z;
     }
 
     // Set the Z value in uniform data with proper padding/alignment
@@ -133,8 +150,8 @@ static void frame(void) {
     }
     
     // Print Z values periodically for debugging
-    printf("Z values: blue=%.2f (pos=back), green=%.2f (pos=middle), red=%.2f (pos=front)\n", 
-           z_back, z_middle, z_front);
+    // printf("Z values: blue=%.2f (pos=back), green=%.2f (pos=middle), red=%.2f (pos=front)\n", 
+        //    z_back, z_middle, z_front);
     
     // Define the rectangles we want to draw
     typedef struct {
@@ -155,7 +172,7 @@ static void frame(void) {
             .color = {0.0f, 0.0f, 0.8f, 0.8f},
             .image = image_back,
             .name = "blue",
-            .blend_mode = BLENDMODE_ALPHA
+            .blend_mode = current_blend_mode
         },
         // Middle rectangle (green)
         {
@@ -165,7 +182,7 @@ static void frame(void) {
             .color = {0.0f, 0.8f, 0.0f, 0.8f},
             .image = image_middle,
             .name = "green",
-            .blend_mode = BLENDMODE_ALPHA
+            .blend_mode = current_blend_mode
         },
         // Front rectangle (red)
         {
@@ -175,7 +192,7 @@ static void frame(void) {
             .color = {0.8f, 0.0f, 0.0f, 0.8f},
             .image = image_front,
             .name = "red",
-            .blend_mode = BLENDMODE_ALPHA
+            .blend_mode = current_blend_mode
         }
     };
     
@@ -195,7 +212,7 @@ static void frame(void) {
     // }
     
     // Draw rectangles in sorted order (back to front)
-    printf("Drawing order: ");
+    // printf("Drawing order: ");
     for (int i = 0; i < n; i++) {
         draw_rect_with_zdepth(
             rects[i].x, 
@@ -207,17 +224,17 @@ static void frame(void) {
             rects[i].image,
             rects[i].blend_mode
         );
-        printf("%s (z=%.2f) ", rects[i].name, rects[i].z);
+        // printf("%s (z=%.2f) ", rects[i].name, rects[i].z);
     }
-    printf("\n");
+    // printf("\n");
     
     // Overlay explanatory text
     sgp_reset_pipeline();
     sgp_set_color(1.0f, 1.0f, 1.0f, 1.0f);
     char info_text[128];
     snprintf(info_text, sizeof(info_text), 
-             "Red Z: %.2f   Green Z: %.2f   Blue Z: %.2f   [Space] Toggle Animation", 
-             z_front, z_middle, z_back);
+             "Red Z: %.2f   Green Z: %.2f   Blue Z: %.2f   Mode: %s   [Space] Toggle Animation [←→] Change Blend", 
+             z_front, z_middle, z_back, get_blend_mode_name(current_blend_mode));
     // Note: In a real app, you'd use a proper text rendering solution
     
     // dispatch draw commands
@@ -244,6 +261,16 @@ static void event(const sapp_event* ev) {
         if (ev->key_code == SAPP_KEYCODE_SPACE) {
             animate_depth = !animate_depth;
             printf("Animation toggled: %s\n", animate_depth ? "ON" : "OFF");
+        } else if (ev->key_code == SAPP_KEYCODE_RIGHT) {
+            // Cycle to next blend mode
+            current_blend_mode = (current_blend_mode + 1) % NUM_BLEND_MODES;
+            printf("Blend mode: %s (%d/%d)\n", get_blend_mode_name(current_blend_mode), 
+                   current_blend_mode + 1, NUM_BLEND_MODES);
+        } else if (ev->key_code == SAPP_KEYCODE_LEFT) {
+            // Cycle to previous blend mode
+            current_blend_mode = (current_blend_mode - 1 + NUM_BLEND_MODES) % NUM_BLEND_MODES;
+            printf("Blend mode: %s (%d/%d)\n", get_blend_mode_name(current_blend_mode), 
+                   current_blend_mode + 1, NUM_BLEND_MODES);
         }
     }
 }
@@ -370,7 +397,7 @@ static void init(void) {
             case BLENDMODE_NONE: // No blending
                 pip_desc.colors[0].blend.enabled = false;
                 break;
-            case BLENDMODE_ALPHA: // Regular alpha blending
+            case BLENDMODE_BLEND: // Regular alpha blending
                 pip_desc.colors[0].blend.enabled = true;
                 pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
                 pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -379,12 +406,52 @@ static void init(void) {
                 pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
                 pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
                 break;
-            case BLENDMODE_PREMULTIPLIED: // Premultiplied alpha blending
+            case BLENDMODE_BLEND_PREMULTIPLIED: // Premultiplied alpha blending
                 pip_desc.colors[0].blend.enabled = true;
                 pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
                 pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
                 pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
                 pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+                pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
+                break;
+            case BLENDMODE_ADD:
+                // Additive blending
+                pip_desc.colors[0].blend.enabled = true;
+                pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+                pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
+                pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+                pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
+                break;
+            case BLENDMODE_ADD_PREMULTIPLIED:
+                // Pre-multiplied additive blending
+                pip_desc.colors[0].blend.enabled = true;
+                pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
+                pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+                pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
+                break;
+            case BLENDMODE_MOD:
+                // Color modulate
+                pip_desc.colors[0].blend.enabled = true;
+                pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_ZERO;
+                pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_SRC_COLOR;
+                pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
+                pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+                pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+                pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
+                break;
+            case BLENDMODE_MUL:
+                // Color multiply
+                pip_desc.colors[0].blend.enabled = true;
+                pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
+                pip_desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+                pip_desc.colors[0].blend.op_rgb = SG_BLENDOP_ADD;
+                pip_desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_DST_ALPHA;
                 pip_desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
                 pip_desc.colors[0].blend.op_alpha = SG_BLENDOP_ADD;
                 break;
